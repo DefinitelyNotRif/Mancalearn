@@ -28,6 +28,7 @@ def validate_input(msg: str, cond_lst: list, final_func=None):
     to an int.
     :return: The user's input (after final_func is applied).
     """
+    print(msg)
     user_input = None
     input_is_valid = False
     conds, c_msgs = zip(*cond_lst)
@@ -39,11 +40,11 @@ def validate_input(msg: str, cond_lst: list, final_func=None):
 
     while not input_is_valid:
         input_is_valid = True
-        user_input = input(msg)
+        user_input = input()
         for i in range(len(cond_lst)):  # Check all conditions
             if not conds[i](user_input):  # If the condition doesn't pass
                 input_is_valid = False
-                print(c_msgs[i])
+                print(c_msgs[i], end='\n')
                 break
 
     if user_input is None:  # Shouldn't ever trigger
@@ -53,14 +54,18 @@ def validate_input(msg: str, cond_lst: list, final_func=None):
     return user_input
 
 
-def numeric(x) -> bool:
+def numeric(x, only_int=False) -> bool:
     """
     Determines whether the given input (string or number) can evaluate to a number.
     :param x: The input to be checked.
+    :param only_int: If True, returns True only if x can evaluate to an int.
     :return: Whether the input is numeric (True/False).
     """
     try:
-        float(x)  # Covers both int and float!
+        if only_int:
+            int(x)
+        else:
+            float(x)  # Covers both int and float!
         return True
     except ValueError:
         return False
