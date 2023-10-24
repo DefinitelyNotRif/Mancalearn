@@ -15,6 +15,62 @@ import numpy as np
 """
 
 
+def validate_input(msg: str, cond_lst: list, final_func=None):
+    """
+    Asks the user for an input, and then validates it according to the specified conditions. If the input doesn't meet
+    any of them, the request is repeated until a valid input is given.
+    :param msg: The initial message, asking the user for their input.
+    :param cond_lst: A list of lists/tuples of length 2. The first of each pair is a condition (a function that should
+    evaluate to True), and the second is the error message to be displayed if the condition evaluates to False. The
+    conditions are checked in the order of the list.
+    :param final_func: Optionally, this function will be applied to the input
+    after all the checks pass. For example, after checking that the user input an integer, you can cast the input string
+    to an int.
+    :return: The user's input (after final_func is applied).
+    """
+    print(msg)
+    user_input = None
+    input_is_valid = False
+    conds, c_msgs = zip(*cond_lst)
+    # Argument validation
+    if not all([callable(c) for c in conds]):
+        raise ValueError('Invalid condition list. The first element of each pair must be a function. ')
+    if not all([isinstance(m, str) for m in c_msgs]):
+        raise ValueError('Invalid condition list. The second element of each pair must be a string. ')
+
+    while not input_is_valid:
+        input_is_valid = True
+        user_input = input()
+        for i in range(len(cond_lst)):  # Check all conditions
+            if not conds[i](user_input):  # If the condition doesn't pass
+                input_is_valid = False
+                print(c_msgs[i], end='\n')
+                break
+
+    if user_input is None:  # Shouldn't ever trigger
+        raise RuntimeError('Couldn\'t save user input while attempting to validate. ')
+    if final_func is not None:
+        user_input = final_func(user_input)
+    return user_input
+
+
+def numeric(x, only_int=False) -> bool:
+    """
+    Determines whether the given input (string or number) can evaluate to a number.
+    :param x: The input to be checked.
+    :param only_int: If True, returns True only if x can evaluate to an int.
+    :return: Whether the input is numeric (True/False).
+    """
+    try:
+        if only_int:
+            int(x)
+        else:
+            float(x)  # Covers both int and float!
+        return True
+    except ValueError:
+        return False
+
+
 def gen_new_board(board_type='new') -> np.ndarray:
     """
     Creates a new board in the starting layout.
