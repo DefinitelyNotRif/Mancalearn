@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 import numpy as np
 import gameplay
+from gameplay import numeric, validate_input
 import non_ai_players
 import reinforcement_player
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
@@ -54,24 +55,33 @@ def run_game(p1, p2, num_games: int = 1, board_type: str = 'new', print_pbp: boo
     return scores, game_info
 
 
-def save_weights(player, info=None):
+def save_weights(player, info=None, comment=None):
     """
     Saves the weights of the given player.
-    The function will create a designated folder, the name of which is the time of its creation and number of rounds.
-    There, each weight will be saved in a separate .csv file, with the names w1, b1, w2, b2, etc.
-    In addition, a 'game_info.csv' file will be created, detailing the player types and number of rounds.
+    The function will create an .npz file, the name of which is the time of its creation and number of rounds.
+    There, each weight will be saved as a separate array, with the names w1, b1, w2, b2, etc.
+    In addition, the player types, number of rounds and additional comments may be saved in a 'game_info' array.
     :param player: The player to extract the weights from. Cannot be from non_ai_players!
-    :param info: The game info (for game_info.csv), as a list of length 3.
+    :param info: A list of length 3, containing the type of each player (as a string) and the number of rounds.
+    :param comment: A description of the game.
     """
     # Input validation
     if not isinstance(player, reinforcement_player.ReinforcementPlayer):
         raise ValueError(f'Cannot save weights of non-AI player ({type(player)})!')
-    # Create the folder
-    folder_str = str(datetime.now()).replace(':', '_')
+
+    names_to_save = []
+    arrs_to_save = []
+    # Add the game info first
+    info_arr = []
     if info is not None:
-        folder_str = f'({info[2]}) {folder_str}'
-    os.mkdir(f'weights_results/{folder_str}')
-    # Create the weight files
+        info_arr.extend(info)
+    if comment is not None:
+        info_arr.append(comment)
+    if len(info_arr) > 0:
+        names_to_save.append('game_info')
+        arrs_to_save.append(info_arr)
+
+    # Add the weights
     player_weights = player.q_network.get_weights()
     for num, weight in enumerate(player_weights):
         if weight.ndim == 1:
@@ -80,72 +90,62 @@ def save_weights(player, info=None):
             w_type = 'w'
         else:
             raise ValueError(f'Invalid weight shape ({weight.ndim})!')
-        np.savetxt(f'weights_results/{folder_str}/{w_type}{num // 2 + 1}.csv', weight, delimiter=',')
-    if info is not None:
-        # Create the info file
-        lines = [f'Player 1: {info[0]}\n'
-                 f'Player 2: {info[1]}\n'
-                 f'Number of rounds: {info[2]}']
-        with open(f'weights_results/{folder_str}/game_info.txt', 'w') as f:
-            f.writelines(lines)
+        w_num = num // 2 + 1
+        names_to_save.append(f'{w_type}{w_num}')
+        arrs_to_save.append(weight)
+
+    kwargs_dict = dict(zip(names_to_save, arrs_to_save))
+    filename = str(datetime.now()).replace(':', '_')
+    filename = f'weights_results/{filename} ({info[2]})'
+    np.savez(filename, **kwargs_dict)
 
 
-def list_games(limit: int = None, prompt: bool = False):
+def list_games(limit: int = None, with_comments: bool = False, prompt: bool = False):
     """
-    Prints a numbered list of all the folders containing weight data. If specified, the user can enter a number, and
-    the name of that folder will be returned.
+    Prints a numbered list of all the files containing weight data. If specified, the user can enter a number, and
+    the name of that file will be returned.
     :param limit: The maximum number of folders to print.
+    :param with_comments: If True, appends the comment (if it exists) to each filename.
     :param prompt: If True, prompts the user to choose a number from the list, and gets that folder's name.
     :return: If prompt is True, returns the name of the selected folder. Otherwise, returns None.
     """
-    folder_list = os.listdir('weights_results')
+    file_list = os.listdir('weights_results')  # A list of all the file names
+    # Set the display limie
     if limit is None:
-        limit = len(folder_list)
+        limit = len(file_list)
     else:
-        limit = min(len(folder_list), limit)
+        limit = min(len(file_list), limit)
+    # Print the file names, and comments if specified
     for i in range(limit):
-        print(f'[{i + 1}] {folder_list[i]}')
+        to_print = f'[{i + 1}] {file_list[i]}'  # The numbered file names
+        if with_comments:
+            game_file = np.load(f'weights_results/{file_list[i]}')  # NpzFile object
+            if 'game_info' in game_file:  # If the file contains a comment
+                comment = game_file['game_info'][-1]  # Isolate the comment itself
+                to_print = f'{to_print} ({comment})'  # And append it to the string
+        print(to_print)
     if prompt:
-        user_choice = input(f'Enter the number of the folder you want to select (1-{limit}): ')
-        valid_choice = False
-        while not valid_choice:
-            try:
-                user_choice = int(user_choice)
-                if user_choice in range(1, limit+1):
-                    valid_choice = True
-                else:
-                    user_choice = input(f'Please enter a number in the range 1-{limit}. ')
-            except ValueError:
-                user_choice = input(f'Please enter an integer in the specified range. ')
-        return folder_list[user_choice - 1]
+        user_choice = validate_input(f'Enter the number of the folder you want to select (1-{limit}): ',
+                                     [[lambda x: numeric(x, True),
+                                       'Please enter an integer in the specified range. '],
+                                      [lambda x: int(x) in range(1, limit+1),
+                                      f'Please enter a number in the range 1-{limit}. ']],
+                                     int)  # The 'int' at the end is the casting function!
+        return file_list[user_choice - 1]
 
 
-def load_weights(folder_name, player, reset_epsilon=False):
+def load_weights(filename, player, reset_epsilon=False):
     """
-    Gets the weights saved in the specified folder, and loads them into the given player.
-    :param folder_name: The folder (in weights_results) of the desired weights.
+    Gets the weights saved in the specified file, and loads them into the given player.
+    :param filename: The file (in weights_results) containing the desired weights.
     :param player: The ReinforcementPlayer to load the weights into.
     :param reset_epsilon: If True, the AI player will start with epsilon = 1. Else, set it to
     its minimum value.
     """
-    folder_path = f'weights_results/{folder_name}'
-    file_list = os.listdir(folder_path)
-    file_list.remove('game_info.txt')
-    num_layers = int(len(file_list) / 2)
-    w_lst = [np.array([])] * num_layers
-    b_lst = [np.array([])] * num_layers
-    for filename in file_list:
-        weights = np.loadtxt(f'{folder_path}/{filename}', delimiter=',')
-        prefix = filename[0]
-        num = int(filename[1])
-        if prefix == 'w':
-            w_lst[num - 1] = weights
-        elif prefix == 'b':
-            b_lst[num - 1] = weights
-        else:
-            raise ValueError(f'Unexpected file encountered ({filename}). ')
-    assert all([len(a) > 0 for a in w_lst])
-    assert all([len(a) > 0 for a in b_lst])
+    game_npz = np.load(f'weights_results/{filename}')
+    num_layers = int((len(game_npz) - 1) / 2)
+    w_lst = [game_npz[f'w{i+1}'] for i in range(num_layers)]
+    b_lst = [game_npz[f'b{i + 1}'] for i in range(num_layers)]
     player.set_weights(w_lst, b_lst)
     if not reset_epsilon:
         player.epsilon = player.e_min
@@ -182,7 +182,8 @@ def ai_vs_random(num_games, from_file=False, save=False):  # AI is always P1 for
         print(f'Player {i} won {winners.count(i)} times. ')
 
     if save:
-        save_weights(p1, info=game_info)
+        comment = input('Enter a description: ')
+        save_weights(p1, info=game_info, comment=comment)
 
 
 def human_vs_ai(human_num=1, from_file=False, save=False):
@@ -207,13 +208,15 @@ def human_vs_ai(human_num=1, from_file=False, save=False):
 
 
 if __name__ == '__main__':
+    pass
     # human_vs_ai(1, True, False)
-    ai_vs_random(100, from_file=True)
+    # ai_vs_random(10, save=True)
 
-    # print(list_games(10, True))
+    list_games(2)
+    # print(list_games(10, with_comments=True, prompt=True))
 
     # p1 = non_ai_players.HumanPlayer(1)
     # p2 = reinforcement_player.ReinforcementPlayer(2)
-    # folder_name = list_games(prompt=True)
-    # load_weights(folder_name, p2)
+    # player_filename = list_games(prompt=True)
+    # load_weights(player_filename, p2)
     # run_game(p1, p2, print_pbp=True, print_scores=True)
