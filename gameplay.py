@@ -53,6 +53,19 @@ def validate_input(msg: str, cond_lst: list, final_func=None):
     return user_input
 
 
+def numeric(x) -> bool:
+    """
+    Determines whether the given input (string or number) can evaluate to a number.
+    :param x: The input to be checked.
+    :return: Whether the input is numeric (True/False).
+    """
+    try:
+        float(x)  # Covers both int and float!
+        return True
+    except ValueError:
+        return False
+
+
 def gen_new_board(board_type='new') -> np.ndarray:
     """
     Creates a new board in the starting layout.
@@ -71,19 +84,6 @@ def gen_new_board(board_type='new') -> np.ndarray:
         return np.array([6, 5, 4, 3, 2, 1, 0, 4, 4, 4, 4, 4, 4, 0])
     else:
         raise ValueError('Invalid board type while attempting to generate. ')
-
-
-def numeric(x) -> bool:
-    """
-    Determines whether the given input (string or number) can evaluate to a number.
-    :param x: The input to be checked.
-    :return: Whether the input is numeric (True/False).
-    """
-    try:
-        float(x)  # Covers both int and float!
-        return True
-    except ValueError:
-        return False
 
 
 def display(board: np.ndarray, reminder: bool = False):
