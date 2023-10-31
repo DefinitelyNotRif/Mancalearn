@@ -98,6 +98,7 @@ def save_weights(player, info=None, comment=None):
     filename = str(datetime.now()).replace(':', '_')
     filename = f'weights_results/{filename} ({info[2]})'
     np.savez(filename, **kwargs_dict)
+    print(f'Saved in weights_results/{filename}. ')
 
 
 def list_games(limit: int = None, with_comments: bool = False, prompt: bool = False):
@@ -171,7 +172,7 @@ def ai_vs_random(num_games, from_file=False, save=False):  # AI is always P1 for
     p1 = reinforcement_player.ReinforcementPlayer(1)
     p2 = non_ai_players.RandomPlayer(2)
     if from_file:
-        folder_name = list_games(prompt=True)
+        folder_name = list_games(prompt=True, with_comments=True)
         load_weights(folder_name, p1)
     with gameplay.timer():
         print('Starting...')
@@ -191,7 +192,7 @@ def human_vs_ai(human_num=1, from_file=False, save=False):
         folder_name = list_games(prompt=True)
     if human_num == 1:
         p1 = non_ai_players.HumanPlayer(1)
-        p2 = reinforcement_player.ReinforcementPlayer(2)
+        p2 = reinforcement_player.ReinforcementPlayer(2, epsilon=0.01)  # TODO: Remove epsilon
         if from_file:
             load_weights(folder_name, p2)
     else:
@@ -209,10 +210,12 @@ def human_vs_ai(human_num=1, from_file=False, save=False):
 
 if __name__ == '__main__':
     pass
-    # human_vs_ai(1, True, False)
+    # human_vs_ai(1, False, False)
     # ai_vs_random(10, save=True)
+    ai_vs_random(10000, False, True)
+    # ai_vs_ai(10000)
 
-    list_games(2)
+    # list_games(2)
     # print(list_games(10, with_comments=True, prompt=True))
 
     # p1 = non_ai_players.HumanPlayer(1)
