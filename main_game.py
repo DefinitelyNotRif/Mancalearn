@@ -19,7 +19,8 @@ def run_game(p1, p2, num_games: int = 1, board_type: str = 'new', print_pbp: boo
     :param print_pbp: Stands for "play-by-play". If True, displays the board and prints each player's decision after
     each move.
     :param print_scores: If True, prints the score at the end of each game.
-    :return: A list of all the outcomes as tuples.
+    :return: A list of all the outcomes (the score of each player) as tuples, as well as the game info: the type of each
+    player and the number of games run.
     """
     players = [p1, p2]
     scores = []
@@ -152,74 +153,97 @@ def load_weights(filename, player, reset_epsilon=False):
         player.epsilon = player.e_min
 
 
-def ai_vs_ai(num_games):
-    p1 = reinforcement_player.ReinforcementPlayer(1)
-    p2 = reinforcement_player.ReinforcementPlayer(2)
-    with gameplay.timer():
-        print('Starting...')
-        repeated_scores, game_info = run_game(p1, p2, num_games)
-        winners = [np.argmax(tup) + 1 for tup in repeated_scores]
-    print(repeated_scores)
-    for i in {1, 2}:
-        print(f'Player {i} won {winners.count(i)} times. ')
-
-    winner_player = p1 if winners.count(1) > winners.count(2) else p2
-    q_weights = winner_player.q_network.get_weights()
-    save_weights(winner_player, info=game_info)
-
-
-def ai_vs_random(num_games, from_file=False, save=False):  # AI is always P1 for now
-    p1 = reinforcement_player.ReinforcementPlayer(1)
-    p2 = non_ai_players.RandomPlayer(2)
-    if from_file:
-        folder_name = list_games(prompt=True, with_comments=True)
-        load_weights(folder_name, p1)
-    with gameplay.timer():
-        print('Starting...')
-        repeated_scores, game_info = run_game(p1, p2, num_games)
-        winners = [np.argmax(tup) + 1 for tup in repeated_scores]
-    print(repeated_scores)
-    for i in {1, 2}:
-        print(f'Player {i} won {winners.count(i)} times. ')
-
-    if save:
-        comment = input('Enter a description: ')
-        save_weights(p1, info=game_info, comment=comment)
-
-
-def human_vs_ai(human_num=1, from_file=False, save=False):
-    if from_file:
-        folder_name = list_games(prompt=True)
-    if human_num == 1:
-        p1 = non_ai_players.HumanPlayer(1)
-        p2 = reinforcement_player.ReinforcementPlayer(2, epsilon=0.01)  # TODO: Remove epsilon
+def create_player(p_data, p_num):
+    """
+    Creates a player based on the type/tuple given in p_type. See setup_game below for details.
+    :param p_data: See setup_game.
+    :param p_num: The number (1/2) of the player to be created.
+    :return: The new player instance.
+    """
+    if isinstance(p_data, tuple):  # AI player
+        p_type, from_file = p_data
+        new_player = p_type(p_num)  # Create the player instance
         if from_file:
-            load_weights(folder_name, p2)
-    else:
-        p1 = reinforcement_player.ReinforcementPlayer(1)
-        p2 = non_ai_players.HumanPlayer(2)
-        if from_file:
-            load_weights(folder_name, p1)
-    print('Starting...')
-    repeated_scores, game_info = run_game(p1, p2, 1, print_scores=True, print_pbp=True)
+            print(f'Load data for player {p_num}: ')
+            load_weights(list_games(prompt=True, with_comments=True), new_player)  # Prompt the user to choose a file
+            # and load the selected data into the player instance
+    else:  # Non-AI player
+        new_player = p_data(p_num)  # Create the player instance. p_data is now equivalent to p_type
+    return new_player
 
-    if save:
-        ai_player = p1 if human_num == 2 else p2
-        save_weights(ai_player, info=game_info)
+
+def setup_game(num_games, p1_type, p2_type, print_outcomes=False):
+    """
+    Creates the players and provides the framework for run_game(). Afterwards, declares the winner and saves
+    the weight files for any AI players.
+    :param num_games: The number of games to be played.
+    :param p1_type: The type of player 1.
+    If it's from non_ai_players, only a type is needed (e.g. p1_type=non_ai_players.RandomPlayer).
+    However, if it's from reinforcement_players, you must provide a tuple, consisting of the player type and
+    whether its data should be loaded from a file.
+    For example: p2_type=(reinforcement_players.ReinforcementPlayer, True).
+    :param p2_type: See above.
+    :param print_outcomes: If True, prints the outcome of each game after all of them are finished.
+    """
+    p1 = create_player(p1_type, 1)
+    p2 = create_player(p2_type, 2)
+    # For print_scores and print_pbp:
+    human_exists = isinstance(p1, non_ai_players.HumanPlayer) or isinstance(p2, non_ai_players.HumanPlayer)
+    if human_exists and num_games > 1:
+        more_than_one_input = validate_input('Are you sure you want to run more than one game with a human? (y/n)',
+                                             [[lambda s: s.lower() == 'y' or s.lower() == 'n',
+                                              'Please enter a valid answer (y/n)']],
+                                             lambda s: s.lower())
+        if more_than_one_input == 'n':
+            print('Number of games set to 1. ')
+            num_games = 1
+
+    with gameplay.timer(suppress=human_exists):
+        print('Starting...')
+        repeated_scores, game_info = run_game(p1, p2, num_games, print_scores=human_exists, print_pbp=human_exists)
+        winners = [np.argmax(tup) + 1 for tup in repeated_scores]  # The winner of each game (1 or 2).
+    if print_outcomes:
+        print(repeated_scores)
+    if num_games > 1:
+        for i in [1, 2]:
+            print(f'Player {i} won {winners.count(i)} times. ')
+
+    if not human_exists:  # Handle saving
+        # For P1
+        if isinstance(p1, reinforcement_player.ReinforcementPlayer):
+            save_input = validate_input('Save data for player 1? (y/n)',
+                                        [[lambda s: s.lower() == 'y' or s.lower() == 'n',
+                                         'Please enter a valid answer (y/n)']],
+                                        lambda s: s.lower())
+            if save_input == 'y':
+                comment = input('Enter a description: \n')
+                save_weights(p1, info=game_info, comment=comment)
+
+        # For P2
+        if isinstance(p2, reinforcement_player.ReinforcementPlayer):
+            save_input = validate_input('Save data for player 2? (y/n)',
+                                        [[lambda s: s.lower() == 'y' or s.lower() == 'n',
+                                         'Please enter a valid answer (y/n)']],
+                                        lambda s: s.lower())
+            if save_input == 'y':
+                comment = input('Enter a description: \n')
+                save_weights(p2, info=game_info, comment=comment)
 
 
 if __name__ == '__main__':
     pass
     # human_vs_ai(1, False, False)
     # ai_vs_random(10, save=True)
-    ai_vs_random(10000, False, True)
+    # ai_vs_random(10000, False, True)
     # ai_vs_ai(10000)
 
     # list_games(2)
     # print(list_games(10, with_comments=True, prompt=True))
 
-    # p1 = non_ai_players.HumanPlayer(1)
+    # p1 = non_ai_players.RandomPlayer(1)
     # p2 = reinforcement_player.ReinforcementPlayer(2)
     # player_filename = list_games(prompt=True)
     # load_weights(player_filename, p2)
-    # run_game(p1, p2, print_pbp=True, print_scores=True)
+    # run_game(p1, p2, print_pbp=True, print_outcomes=True)
+
+    setup_game(10, non_ai_players.HumanPlayer, (reinforcement_player.ReinforcementPlayer, True))

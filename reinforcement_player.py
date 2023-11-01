@@ -145,16 +145,20 @@ class ReinforcementPlayer:
     def update_epsilon(self):
         self.epsilon = max(self.e_min, self.epsilon * self.e_decay)
 
-    def set_weights(self, w_lst: list[np.ndarray], b_lst: list[np.ndarray]):
+    def set_weights(self, w_lst: list[np.ndarray], b_lst: list[np.ndarray], reset_epsilon: bool = False):
         """
         Sets the weights of the player's networks.
         The order of the lists corresponds to the order of the layers, from the input layer to the output.
         :param w_lst: A list of the W matrices.
         :param b_lst: A list of the b vectors.
+        :param reset_epsilon: If True, sets the epsilon to 1. Otherwise, sets it to the minimum value, since the
+        network had already been trained.
         """
         for i in range(len(w_lst)):
             self.q_network.layers[i].set_weights([w_lst[i], b_lst[i]])
             self.target_q_network.layers[i].set_weights([w_lst[i], b_lst[i]])
+        if not reset_epsilon:  # The default is 1, so we only need to handle the False case
+            self.epsilon = self.e_min
 
     @staticmethod
     def flip_board(board):

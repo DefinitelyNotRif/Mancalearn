@@ -23,9 +23,8 @@ def validate_input(msg: str, cond_lst: list, final_func=None):
     :param cond_lst: A list of lists/tuples of length 2. The first of each pair is a condition (a function that should
     evaluate to True), and the second is the error message to be displayed if the condition evaluates to False. The
     conditions are checked in the order of the list.
-    :param final_func: Optionally, this function will be applied to the input
-    after all the checks pass. For example, after checking that the user input an integer, you can cast the input string
-    to an int.
+    :param final_func: Optionally, this function will be applied to the input after all the checks pass.
+    For example, after checking that the user input an integer, you can cast the input string to an int.
     :return: The user's input (after final_func is applied).
     """
     print(msg)
@@ -239,12 +238,13 @@ def text_to_board():
 
 
 @contextmanager
-def timer():
+def timer(suppress: bool = False):
     start_time = time.time()
     try:
         yield
     finally:
-        print(f'Total runtime: {time.time() - start_time} seconds. ')
+        if not suppress:
+            print(f'Total runtime: {time.time() - start_time} seconds. ')
 
 
 if __name__ == '__main__':
